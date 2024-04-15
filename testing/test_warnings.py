@@ -840,3 +840,34 @@ def test_resource_warning(pytester: Pytester, monkeypatch: pytest.MonkeyPatch) -
         else []
     )
     result.stdout.fnmatch_lines([*expected_extra, "*1 passed*"])
+
+
+@pytest.mark.filterwarnings("default")
+def test_warnings_get_imported_after_plugins(
+    pytester: Pytester, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytester.makepyprojecttoml(
+        """
+        [tool.pytest.ini_options]
+        filterwarnings = ["ignore::my_package.W"]
+        """
+    )
+    # load the same way as pytest-cov
+    pytester.makepyfile(
+        my_package="""
+        class W(RuntimeWarning):
+            pass
+        """,
+        myplugin="""
+        import sys
+        import pytest
+
+        @pytest.hookimpl(tryfirst=True)
+        def pytest_load_initial_conftests(early_config, parser, args):
+            assert "my_package" not in sys.modules
+        """,
+    )
+    monkeypatch.setenv("PYTEST_PLUGINS", "myplugin")
+    pytester.syspathinsert()
+    result = pytester.runpytest()
+    result.stdout.fnmatch_lines("* no tests ran in *")
